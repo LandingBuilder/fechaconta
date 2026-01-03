@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Printer, Trash2, Plus } from "lucide-react";
+import { Printer, Trash2, Plus, X } from "lucide-react";
 
 interface CategoryData {
   id: string;
@@ -51,6 +51,16 @@ const CashRegister = () => {
       )
     );
     setInputValues((prev) => ({ ...prev, [categoryId]: "" }));
+  };
+
+  const handleRemoveValue = (categoryId: string, valueIndex: number) => {
+    setCategories((prev) =>
+      prev.map((cat) =>
+        cat.id === categoryId
+          ? { ...cat, values: cat.values.filter((_, idx) => idx !== valueIndex) }
+          : cat
+      )
+    );
   };
 
   const handleInputChange = (categoryId: string, value: string) => {
@@ -205,8 +215,15 @@ const CashRegister = () => {
                 {category.values.length > 0 && (
                   <div className="max-h-24 space-y-1 overflow-y-auto text-sm text-muted-foreground">
                     {category.values.map((val, idx) => (
-                      <div key={idx} className="rounded bg-muted px-2 py-1">
-                        {formatCurrency(val)}
+                      <div key={idx} className="flex items-center justify-between rounded bg-muted px-2 py-1">
+                        <span>{formatCurrency(val)}</span>
+                        <button
+                          onClick={() => handleRemoveValue(category.id, idx)}
+                          className="ml-2 rounded p-0.5 text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                          aria-label="Remover valor"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
                       </div>
                     ))}
                   </div>
