@@ -97,61 +97,92 @@ const CashRegister = () => {
           <title>Fechamento de Caixa</title>
           <style>
             @page { margin: 0; size: 80mm auto; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
-              font-family: 'Courier New', monospace;
-              font-size: 12px;
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 10px;
+              line-height: 1.3;
               width: 72mm;
-              margin: 4mm;
-              padding: 0;
+              padding: 2mm;
             }
             .header {
               text-align: center;
+              padding-bottom: 4px;
+              margin-bottom: 4px;
               border-bottom: 1px dashed #000;
-              padding-bottom: 8px;
-              margin-bottom: 8px;
             }
             .title {
-              font-size: 14px;
+              font-size: 11px;
               font-weight: bold;
+              letter-spacing: 1px;
             }
             .date {
-              margin-top: 4px;
+              font-size: 9px;
+              margin-top: 2px;
+            }
+            .items {
+              margin: 4px 0;
             }
             .item {
               display: flex;
               justify-content: space-between;
-              padding: 4px 0;
+              padding: 2px 0;
+              font-size: 9px;
+            }
+            .item-name {
+              max-width: 60%;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+            .item-value {
+              text-align: right;
+              font-family: 'Courier New', monospace;
             }
             .divider {
               border-top: 1px dashed #000;
-              margin: 8px 0;
+              margin: 4px 0;
             }
             .total {
+              display: flex;
+              justify-content: space-between;
               font-weight: bold;
-              font-size: 14px;
+              font-size: 11px;
+              padding: 4px 0;
+            }
+            .footer {
+              text-align: center;
+              font-size: 8px;
+              margin-top: 6px;
+              padding-top: 4px;
+              border-top: 1px dashed #000;
             }
           </style>
         </head>
         <body>
           <div class="header">
             <div class="title">FECHAMENTO DE CAIXA</div>
-            <div class="date">${dateStr} - ${timeStr}</div>
+            <div class="date">${dateStr} ${timeStr}</div>
           </div>
-          ${categories
-            .map(
-              (cat) => `
-            <div class="item">
-              <span>${cat.icon} ${cat.name}</span>
-              <span>${formatCurrency(getCategoryTotal(cat))}</span>
-            </div>
-          `
-            )
-            .join("")}
+          <div class="items">
+            ${categories
+              .filter((cat) => getCategoryTotal(cat) > 0)
+              .map(
+                (cat) => `
+              <div class="item">
+                <span class="item-name">${cat.name}</span>
+                <span class="item-value">${formatCurrency(getCategoryTotal(cat))}</span>
+              </div>
+            `
+              )
+              .join("")}
+          </div>
           <div class="divider"></div>
-          <div class="item total">
-            <span>TOTAL GERAL</span>
+          <div class="total">
+            <span>TOTAL</span>
             <span>${formatCurrency(getGrandTotal())}</span>
           </div>
+          <div class="footer">*** FIM ***</div>
         </body>
       </html>
     `;
