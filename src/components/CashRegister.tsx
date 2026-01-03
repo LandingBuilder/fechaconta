@@ -1,8 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { usePlan } from "@/contexts/PlanContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Printer, Trash2, Plus, X } from "lucide-react";
+import { Printer, Trash2, Plus, X, Lock } from "lucide-react";
+import Header from "@/components/Header";
+import UpgradeModal from "@/components/UpgradeModal";
+import ErrorMessage from "@/components/ErrorMessage";
+import { useValidation } from "@/hooks/useValidation";
 
 interface CategoryData {
   id: string;
@@ -35,13 +41,31 @@ const formatCurrency = (value: number): string => {
 const CashRegister = () => {
   const [categories, setCategories] = useState<CategoryData[]>(initialCategories);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { canClose, closingsToday, maxClosingsToday, isPremium, recordClosing } = usePlan();
+  const navigate = useNavigate();
+  const { validateCurrency } = useValidation();
 
   const handleAddValue = (categoryId: string) => {
     const inputValue = inputValues[categoryId];
-    if (!inputValue) return;
+    setError(null);
+
+    if (!inputValue) {
+      setError("Por favor, insira um valor");
+      return;
+    }
+
+    if (!validateCurrency(inputValue)) {
+      setError("Insira um valor válido (ex: 100,50)");
+      return;
+    }
 
     const numValue = parseFloat(inputValue.replace(",", "."));
-    if (isNaN(numValue) || numValue <= 0) return;
+    if (isNaN(numValue) || numValue <= 0) {
+      setError("Insira um valor maior que zero");
+      return;
+    }
 
     setCategories((prev) =>
       prev.map((cat) =>
@@ -78,7 +102,19 @@ const CashRegister = () => {
   };
 
   const getGrandTotal = (): number => {
-    return categories.reduce((sum, cat) => sum + getCategoryTotal(cat), 0);
+    const entradas = categories
+      .filter((cat) => !cat.id.includes("sangria") && cat.id !== "despesas")
+      .reduce((sum, cat) => sum + getCategoryTotal(cat), 0);
+    
+    const sangrias = categories
+      .filter((cat) => cat.id.includes("sangria"))
+      .reduce((sum, cat) => sum + getCategoryTotal(cat), 0);
+    
+    const despesas = getCategoryTotal(
+      categories.find((cat) => cat.id === "despesas") || { id: "despesas", name: "Despesas", icon: "📋", values: [] }
+    );
+    
+    return entradas - sangrias - despesas;
   };
 
   const handleClear = () => {
@@ -86,7 +122,18 @@ const CashRegister = () => {
     setInputValues({});
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    if (!canClose) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    const success = await recordClosing();
+    if (!success) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     const now = new Date();
     const dateStr = now.toLocaleDateString("pt-BR");
     const timeStr = now.toLocaleTimeString("pt-BR");
@@ -196,34 +243,39 @@ const CashRegister = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
+    <>
+      <Header />
+      <div className="min-h-screen bg-background p-3 sm:p-4 md:p-6">
       <div className="mx-auto max-w-4xl">
+        {/* Error Message */}
+        {error && <div className="mb-4"><ErrorMessage message={error} /></div>}
+
         {/* Header */}
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-foreground md:text-3xl">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground">
             💰 Fechamento de Caixa
           </h1>
-          <p className="mt-1 text-muted-foreground">
+          <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
             Adicione os valores de cada categoria
           </p>
         </div>
 
         {/* Categories Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {categories.map((category) => (
             <Card key={category.id} className="overflow-hidden">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between text-base">
-                  <span>
-                    {category.icon} {category.name}
+              <CardHeader className="pb-2 sm:pb-3">
+                <CardTitle className="flex items-center justify-between text-sm sm:text-base">
+                  <span className="truncate">
+                    {category.icon} <span className="hidden sm:inline">{category.name}</span>
                   </span>
-                  <span className="text-primary">
+                  <span className="text-primary text-sm sm:text-base">
                     {formatCurrency(getCategoryTotal(category))}
                   </span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex gap-2">
+              <CardContent className="space-y-2 sm:space-y-3">
+                <div className="flex gap-1 sm:gap-2">
                   <Input
                     type="text"
                     inputMode="decimal"
@@ -233,24 +285,25 @@ const CashRegister = () => {
                       handleInputChange(category.id, e.target.value)
                     }
                     onKeyPress={(e) => handleKeyPress(e, category.id)}
-                    className="flex-1"
+                    className="flex-1 text-sm"
                   />
                   <Button
                     size="icon"
                     onClick={() => handleAddValue(category.id)}
                     variant="secondary"
+                    className="sm:px-3"
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
                 {category.values.length > 0 && (
-                  <div className="max-h-24 space-y-1 overflow-y-auto text-sm text-muted-foreground">
+                  <div className="max-h-24 space-y-1 overflow-y-auto text-xs sm:text-sm text-muted-foreground">
                     {category.values.map((val, idx) => (
                       <div key={idx} className="flex items-center justify-between rounded bg-muted px-2 py-1">
                         <span>{formatCurrency(val)}</span>
                         <button
                           onClick={() => handleRemoveValue(category.id, idx)}
-                          className="ml-2 rounded p-0.5 text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                          className="ml-1 sm:ml-2 rounded p-0.5 text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
                           aria-label="Remover valor"
                         >
                           <X className="h-3 w-3" />
@@ -266,54 +319,148 @@ const CashRegister = () => {
 
         {/* Summary Panel */}
         <Card className="mt-6 border-primary">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-center text-xl">📊 Resumo</CardTitle>
+          <CardHeader className="pb-2 sm:pb-3">
+            <CardTitle className="text-center text-lg sm:text-xl">📊 Resumo</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2 text-sm md:grid-cols-2 lg:grid-cols-3">
-              {categories.map((cat) => (
-                <div
-                  key={cat.id}
-                  className="flex justify-between rounded bg-muted px-3 py-2"
-                >
+            {/* Entradas */}
+            <div className="mb-3 sm:mb-4">
+              <div className="mb-2 text-xs sm:text-sm font-semibold text-green-600">✅ ENTRADAS</div>
+              <div className="space-y-1 rounded-lg bg-green-50 p-2 sm:p-3">
+                {categories
+                  .filter((cat) => !cat.id.includes("sangria") && cat.id !== "despesas")
+                  .map((cat) => (
+                    <div key={cat.id} className="flex justify-between text-xs sm:text-sm">
+                      <span className="truncate">{cat.icon} <span className="hidden sm:inline">{cat.name}</span></span>
+                      <span className="font-medium ml-1">{formatCurrency(getCategoryTotal(cat))}</span>
+                    </div>
+                  ))}
+                <div className="border-t border-green-200 pt-1 mt-1 flex justify-between font-bold text-green-700 text-xs sm:text-sm">
+                  <span>Subtotal</span>
                   <span>
-                    {cat.icon} {cat.name}
-                  </span>
-                  <span className="font-medium">
-                    {formatCurrency(getCategoryTotal(cat))}
+                    {formatCurrency(
+                      categories
+                        .filter((cat) => !cat.id.includes("sangria") && cat.id !== "despesas")
+                        .reduce((sum, cat) => sum + getCategoryTotal(cat), 0)
+                    )}
                   </span>
                 </div>
-              ))}
+              </div>
             </div>
-            <div className="mt-4 flex justify-between rounded-lg bg-primary px-4 py-3 text-lg font-bold text-primary-foreground">
-              <span>TOTAL GERAL</span>
+
+            {/* Sangrias */}
+            <div className="mb-3 sm:mb-4">
+              <div className="mb-2 text-xs sm:text-sm font-semibold text-orange-600">📤 SANGRIAS</div>
+              <div className="space-y-1 rounded-lg bg-orange-50 p-2 sm:p-3">
+                {categories
+                  .filter((cat) => cat.id.includes("sangria"))
+                  .map((cat) => (
+                    <div key={cat.id} className="flex justify-between text-xs sm:text-sm">
+                      <span className="truncate">{cat.icon} <span className="hidden sm:inline">{cat.name}</span></span>
+                      <span className="font-medium ml-1">-{formatCurrency(getCategoryTotal(cat))}</span>
+                    </div>
+                  ))}
+                <div className="border-t border-orange-200 pt-1 mt-1 flex justify-between font-bold text-orange-700 text-xs sm:text-sm">
+                  <span>Subtotal</span>
+                  <span>
+                    -{formatCurrency(
+                      categories
+                        .filter((cat) => cat.id.includes("sangria"))
+                        .reduce((sum, cat) => sum + getCategoryTotal(cat), 0)
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Despesas */}
+            <div className="mb-3 sm:mb-4">
+              <div className="mb-2 text-xs sm:text-sm font-semibold text-red-600">📋 DESPESAS</div>
+              <div className="space-y-1 rounded-lg bg-red-50 p-2 sm:p-3">
+                {categories
+                  .filter((cat) => cat.id === "despesas")
+                  .map((cat) => (
+                    <div key={cat.id} className="flex justify-between text-xs sm:text-sm">
+                      <span className="truncate">{cat.icon} <span className="hidden sm:inline">{cat.name}</span></span>
+                      <span className="font-medium ml-1">-{formatCurrency(getCategoryTotal(cat))}</span>
+                    </div>
+                  ))}
+                <div className="border-t border-red-200 pt-1 mt-1 flex justify-between font-bold text-red-700 text-xs sm:text-sm">
+                  <span>Subtotal</span>
+                  <span>
+                    -{formatCurrency(
+                      getCategoryTotal(
+                        categories.find((cat) => cat.id === "despesas") || {
+                          id: "despesas",
+                          name: "Despesas",
+                          icon: "📋",
+                          values: [],
+                        }
+                      )
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Saldo Final */}
+            <div className={`flex justify-between rounded-lg px-3 sm:px-4 py-2 sm:py-3 text-base sm:text-lg font-bold ${
+              getGrandTotal() >= 0
+                ? "bg-blue-600 text-white"
+                : "bg-red-600 text-white"
+            }`}>
+              <span>SALDO FINAL</span>
               <span>{formatCurrency(getGrandTotal())}</span>
             </div>
           </CardContent>
         </Card>
 
         {/* Action Buttons */}
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <Button
-            onClick={handlePrint}
-            size="lg"
-            className="flex-1 sm:flex-none"
-          >
-            <Printer className="mr-2 h-5 w-5" />
-            Imprimir Fechamento
-          </Button>
+        <div className="mt-6 flex flex-col gap-2 sm:gap-3 sm:flex-row sm:justify-center">
+          <div className="relative flex-1 sm:flex-none">
+            <Button
+              onClick={handlePrint}
+              size="lg"
+              className="w-full sm:w-auto text-sm sm:text-base"
+              disabled={!canClose}
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Imprimir</span>
+              <span className="sm:hidden">Imprimir</span>
+            </Button>
+            {!canClose && (
+              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-black/50">
+                <div className="flex items-center gap-2 text-xs text-white font-semibold">
+                  <Lock className="h-3 w-3" />
+                  <span className="hidden sm:inline">Limite diário atingido</span>
+                  <span className="sm:hidden">Limite atingido</span>
+                </div>
+              </div>
+            )}
+          </div>
+          {!canClose && !isPremium && (
+            <Button
+              onClick={() => navigate("/plans")}
+              size="lg"
+              className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-sm sm:text-base"
+            >
+              Upgrade
+            </Button>
+          )}
           <Button
             onClick={handleClear}
             variant="destructive"
             size="lg"
-            className="flex-1 sm:flex-none"
+            className="flex-1 sm:flex-none text-sm sm:text-base"
           >
-            <Trash2 className="mr-2 h-5 w-5" />
-            Limpar / Novo Caixa
+            <Trash2 className="mr-2 h-4 w-4" />
+            Limpar
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+      <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} />
+    </>
   );
 };
 
